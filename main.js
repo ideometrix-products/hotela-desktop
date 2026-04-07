@@ -21,9 +21,12 @@ const url = require('url');
 const imageService = require('./image-service');
 
 // Ensure the Remix server knows where the backend API is.
-// Using the local development server since the production URL timed out.
 process.env.VITE_API_URL = 'https://staging-api.hotelaapp.com/api';
 process.env.IS_ELECTRON = 'true'; // Signal Remix SSR to bypass live fetches luxuriously.
+
+// Set a runtime global flag that SURVIVES Vite's build-time process.env replacement.
+// bypassOfflineLoader reads this to reliably detect the Electron context server-side.
+global.__HOTELA_DESKTOP__ = true;
 
 // Override the user-agent to a standard Chrome string.
 // This prevents Remix's isbot() middleware from treating the Electron
