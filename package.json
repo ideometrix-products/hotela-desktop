@@ -20,6 +20,7 @@
       "main.js",
       "preload.js",
       "image-service.js",
+      "assets/**/*",
       "build/**/*",
       "node_modules/**/*"
     ],
@@ -37,11 +38,11 @@
           ]
         }
       ],
-      "icon": "build/icon.png"
+      "icon": "assets/icon.png"
     },
     "mac": {
       "target": "dmg",
-      "icon": "build/icon.png",
+      "icon": "assets/icon.png",
       "category": "public.app-category.business"
     },
     "forceCodeSigning": false,
