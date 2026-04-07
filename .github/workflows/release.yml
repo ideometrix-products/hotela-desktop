@@ -22,7 +22,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
 
       # --- CLONE AND BUILD THE WEB APP ---
       # This replaces running `npm run sync` manually.
@@ -54,7 +54,7 @@ jobs:
 
       # --- BUILD THE WINDOWS INSTALLER ---
       - name: Install hotela-desktop dependencies
-        run: npm ci
+        run: npm install --legacy-peer-deps
 
       - name: Build Windows installer
         run: npm run dist -- --win
@@ -79,7 +79,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
 
       # --- CLONE AND BUILD THE WEB APP ---
       - name: Clone hotela-app
@@ -108,7 +108,7 @@ jobs:
 
       # --- BUILD THE MAC INSTALLER ---
       - name: Install hotela-desktop dependencies
-        run: npm ci
+        run: npm install --legacy-peer-deps
 
       - name: Build macOS installer (unsigned)
         run: npm run dist -- --mac
