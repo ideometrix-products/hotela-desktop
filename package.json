@@ -19,14 +19,30 @@
     "files": [
       "main.js",
       "preload.js",
+      "image-service.js",
       "build/**/*",
       "node_modules/**/*"
     ],
+    "publish": {
+      "provider": "github",
+      "owner": "ideometrix-products",
+      "repo": "hotela-desktop"
+    },
     "win": {
       "target": [
-        "portable"
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
       ],
       "icon": "build/icon.png"
+    },
+    "mac": {
+      "target": "dmg",
+      "icon": "build/icon.png",
+      "category": "public.app-category.business"
     },
     "forceCodeSigning": false,
     "nsis": {
@@ -67,6 +83,7 @@
     "chakra-dayzed-datepicker": "^0.3.0",
     "date-fns": "^3.6.0",
     "dayzed": "^3.2.3",
+    "electron-updater": "^6.8.3",
     "express": "^4.19.2",
     "framer-motion": "^11.2.4",
     "fs-extra": "^11.3.4",

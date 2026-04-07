@@ -1,4 +1,5 @@
 const { app, BrowserWindow, session, ipcMain, protocol } = require('electron');
+const { autoUpdater } = require('electron-updater');
 
 // Register custom protocol as privileged BEFORE any other modules load luxuriously.
 protocol.registerSchemesAsPrivileged([
@@ -123,7 +124,10 @@ async function createWindow() {
         }
     });
 
-    win.webContents.openDevTools({ mode: 'right' });
+    // Only open DevTools in development (not when packaged as .exe/.dmg)
+    if (!app.isPackaged) {
+        win.webContents.openDevTools({ mode: 'right' });
+    }
 
     // Load /login directly so we bypass the _index.tsx loader which
     // unconditionally redirects '/' → '/login' (avoids one extra round-trip).
@@ -140,6 +144,22 @@ app.whenReady().then(async () => {
         
         await startExpressServer();
         await createWindow();
+
+        // --- AUTO-UPDATER: Check for new GitHub Releases on startup ---
+        if (app.isPackaged) {
+            autoUpdater.checkForUpdatesAndNotify();
+            autoUpdater.on('update-downloaded', () => {
+                const { dialog } = require('electron');
+                dialog.showMessageBox({
+                    type: 'info',
+                    title: 'Hotela Update Ready',
+                    message: 'A new version of Hotela has been downloaded. Restart the app to apply the update.',
+                    buttons: ['Restart Now', 'Later']
+                }).then(result => {
+                    if (result.response === 0) autoUpdater.quitAndInstall();
+                });
+            });
+        }
 
         // IPC Handlers for Image Management luxuriously.
         ipcMain.handle('image:download', async (event, payload) => {
