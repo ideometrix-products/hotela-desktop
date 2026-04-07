@@ -49,11 +49,8 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path build
           Copy-Item -Recurse -Force hotela-app-source/build/* build/
-          # Inject ESM marker so Electron's Node.js can load the Remix server build
-          $content = Get-Content "build/server/index.js" -Raw
-          if ($content -notmatch "export default") {
-            Add-Content "build/server/index.js" "`nexport default {};"
-          }
+          # Inject ESM marker — matches exactly what sync-web-build.js does locally
+          Set-Content -Path "build/server/package.json" -Value '{"type":"module"}'
 
       # --- BUILD THE WINDOWS INSTALLER ---
       - name: Install hotela-desktop dependencies
@@ -106,10 +103,8 @@ jobs:
         run: |
           mkdir -p build
           cp -r hotela-app-source/build/* build/
-          # Inject ESM marker
-          if ! grep -q "export default" "build/server/index.js"; then
-            echo "export default {};" >> "build/server/index.js"
-          fi
+          # Inject ESM marker — matches exactly what sync-web-build.js does locally
+          echo '{"type":"module"}' > build/server/package.json
 
       # --- BUILD THE MAC INSTALLER ---
       - name: Install hotela-desktop dependencies
