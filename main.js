@@ -1,11 +1,28 @@
-const { app, BrowserWindow, session } = require('electron');
+const { app, BrowserWindow, session, ipcMain, protocol } = require('electron');
+
+// Register custom protocol as privileged BEFORE any other modules load luxuriously.
+protocol.registerSchemesAsPrivileged([
+    { 
+        scheme: 'hotela-resource', 
+        privileges: { 
+            standard: true, 
+            secure: true, 
+            supportFetchAPI: true, 
+            bypassCSP: true,
+            stream: true
+        } 
+    }
+]);
+
 const express = require('express');
 const path = require('path');
 const url = require('url');
+const imageService = require('./image-service');
 
 // Ensure the Remix server knows where the backend API is.
 // Using the local development server since the production URL timed out.
-process.env.VITE_API_URL = 'http://localhost:8000/api';
+process.env.VITE_API_URL = 'http://127.0.0.1:8000/api';
+process.env.IS_ELECTRON = 'true'; // Signal Remix SSR to bypass live fetches luxuriously.
 
 // Override the user-agent to a standard Chrome string.
 // This prevents Remix's isbot() middleware from treating the Electron
@@ -25,9 +42,14 @@ async function startExpressServer() {
         try {
             const expressApp = express();
 
-            // Serve static client assets (JS, CSS, images)
+            // Serve static client assets luxuriously - disabling cache for robust debugging luxuriously.
             expressApp.use(
-                express.static(CLIENT_DIR, { immutable: true, maxAge: '1y' })
+                express.static(CLIENT_DIR, { 
+                    immutable: false, 
+                    maxAge: 0,
+                    etag: false,
+                    lastModified: false
+                })
             );
 
             // Dynamically import the Remix ESM server build
@@ -54,9 +76,9 @@ async function startExpressServer() {
 }
 
 async function createWindow() {
-    // Use a fresh in-memory session on every launch so stale auth cookies
-    // from a previous run cannot trigger unexpected redirects.
-    const ses = session.fromPartition('hotela-' + Date.now(), { cache: false });
+    // Use a persistent partition so IndexedDB (RxDB) survives app restarts.
+    // The 'persist:' prefix tells Electron to save data to disk instead of memory.
+    const ses = session.fromPartition('persist:hotela-main');
 
     // Ensure every outbound request uses the Chrome UA we set globally
     ses.webRequest.onBeforeSendHeaders((details, callback) => {
@@ -72,6 +94,7 @@ async function createWindow() {
         webPreferences: {
             nodeIntegration: false,
             contextIsolation: true,
+            preload: path.join(__dirname, 'preload.js'),
             session: ses,
         },
         title: 'Hotela',
@@ -109,8 +132,24 @@ async function createWindow() {
 
 app.whenReady().then(async () => {
     try {
+        // Use a consistent session for protocol registration luxuriously.
+        const ses = session.fromPartition('persist:hotela-main');
+
+        // Register custom protocol for local image serving on the specific session luxuriously.
+        imageService.registerProtocol(ses);
+        
         await startExpressServer();
         await createWindow();
+
+        // IPC Handlers for Image Management luxuriously.
+        ipcMain.handle('image:download', async (event, payload) => {
+            return await imageService.addToQueue(payload.url, payload.type, payload.updatedAt, payload.id);
+        });
+
+        ipcMain.handle('image:cleanup', async (event, payload) => {
+            return await imageService.cleanup(payload.activeHashes);
+        });
+
     } catch (err) {
         console.error('[hotela-desktop] Failed to start server:', err.message);
         console.error(err.stack);

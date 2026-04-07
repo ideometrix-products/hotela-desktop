@@ -1,13 +1,21 @@
 {
     "compilerOptions": {
-        "forceConsistentCasingInFileNames": false,
-        "module": "CommonJS",
-        "target": "ES2020",
+        "forceConsistentCasingInFileNames": true,
+        "module": "NodeNext",
+        "target": "ESNext",
+        "moduleResolution": "NodeNext",
         "lib": [
-            "ES2020"
+            "ESNext"
         ],
         "strict": false,
-        "skipLibCheck": true
+        "skipLibCheck": true,
+        "checkJs": false
+    },
+    "typeAcquisition": {
+        "include": [
+            "node",
+            "electron"
+        ]
     },
     "exclude": [
         "node_modules",

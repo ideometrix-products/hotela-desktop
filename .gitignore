@@ -4,7 +4,10 @@ node_modules/
 # Electron build output
 build/
 dist/
+dist-package/
 out/
+temp-context.json
+diff.txt
 
 # Logs
 *.log
