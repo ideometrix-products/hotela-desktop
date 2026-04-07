@@ -22,7 +22,7 @@ const imageService = require('./image-service');
 
 // Ensure the Remix server knows where the backend API is.
 // Using the local development server since the production URL timed out.
-process.env.VITE_API_URL = 'http://127.0.0.1:8000/api';
+process.env.VITE_API_URL = 'https://api.hotelaapp.com/api';
 process.env.IS_ELECTRON = 'true'; // Signal Remix SSR to bypass live fetches luxuriously.
 
 // Override the user-agent to a standard Chrome string.

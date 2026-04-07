@@ -6,22 +6,57 @@ on:
     tags:
       - 'v*.*.*'
 
+# Required so GITHUB_TOKEN can create Releases and upload assets
+permissions:
+  contents: write
+
 jobs:
   build-windows:
     name: Build Windows Installer
     runs-on: windows-latest
 
     steps:
-      - name: Checkout code
+      - name: Checkout hotela-desktop
         uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
 
-      - name: Install dependencies
+      # --- CLONE AND BUILD THE WEB APP ---
+      # This replaces running `npm run sync` manually.
+      # GitHub clones hotela-app, builds it, and copies the output here.
+      - name: Clone hotela-app
+        uses: actions/checkout@v4
+        with:
+          repository: ideometrix-products/hotela-app
+          path: hotela-app-source
+          token: ${{ secrets.GH_PAT }}
+
+      - name: Install hotela-app dependencies
+        run: npm ci
+        working-directory: hotela-app-source
+
+      - name: Build hotela-app web bundle
+        run: npm run build
+        working-directory: hotela-app-source
+        env:
+          VITE_API_URL: https://api.hotelaapp.com/api
+
+      - name: Copy web build into desktop folder
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path build
+          Copy-Item -Recurse -Force hotela-app-source/build/* build/
+          # Inject ESM marker so Electron's Node.js can load the Remix server build
+          $content = Get-Content "build/server/index.js" -Raw
+          if ($content -notmatch "export default") {
+            Add-Content "build/server/index.js" "`nexport default {};"
+          }
+
+      # --- BUILD THE WINDOWS INSTALLER ---
+      - name: Install hotela-desktop dependencies
         run: npm ci
 
       - name: Build Windows installer
@@ -41,23 +76,49 @@ jobs:
     runs-on: macos-latest
 
     steps:
-      - name: Checkout code
+      - name: Checkout hotela-desktop
         uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
 
-      - name: Install dependencies
+      # --- CLONE AND BUILD THE WEB APP ---
+      - name: Clone hotela-app
+        uses: actions/checkout@v4
+        with:
+          repository: ideometrix-products/hotela-app
+          path: hotela-app-source
+          token: ${{ secrets.GH_PAT }}
+
+      - name: Install hotela-app dependencies
+        run: npm ci
+        working-directory: hotela-app-source
+
+      - name: Build hotela-app web bundle
+        run: npm run build
+        working-directory: hotela-app-source
+        env:
+          VITE_API_URL: https://api.hotelaapp.com/api
+
+      - name: Copy web build into desktop folder
+        run: |
+          mkdir -p build
+          cp -r hotela-app-source/build/* build/
+          # Inject ESM marker
+          if ! grep -q "export default" "build/server/index.js"; then
+            echo "export default {};" >> "build/server/index.js"
+          fi
+
+      # --- BUILD THE MAC INSTALLER ---
+      - name: Install hotela-desktop dependencies
         run: npm ci
 
-      - name: Build macOS installer (unsigned - no Apple cert required)
+      - name: Build macOS installer (unsigned)
         run: npm run dist -- --mac
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Skip code signing - users will need to allow app in Security settings
           CSC_IDENTITY_AUTO_DISCOVERY: false
 
       - name: Upload macOS artifact
@@ -93,12 +154,12 @@ jobs:
             ## Hotela Desktop ${{ github.ref_name }}
 
             ### Download
-            - **Windows**: Download the `.exe` file below and run it to install
-            - **macOS**: Download the `.dmg` file, open it, and drag Hotela to Applications
-              > ⚠️ On Mac, go to **System Preferences → Security & Privacy** and click "Open Anyway" if prompted
+            - **Windows**: Download the `.exe` file and run it to install
+            - **macOS**: Download the `.dmg` file, open it, and drag Hotela to your Applications folder
+              > ⚠️ On Mac you may need to go to **System Preferences → Security & Privacy** and click "Open Anyway"
 
-            ### What's New
-            See the commit history for changes included in this release.
+            ### Auto-Update
+            If you already have Hotela Desktop installed, it will update automatically in the background.
           files: ./installers/*
           draft: false
           prerelease: false
