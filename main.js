@@ -21,7 +21,7 @@ const url = require('url');
 const imageService = require('./image-service');
 
 // Ensure the Remix server knows where the backend API is.
-process.env.VITE_API_URL = 'https://staging-api.hotelaapp.com/api';
+process.env.VITE_API_URL = 'https://api.hotelaapp.com/api';
 process.env.IS_ELECTRON = 'true'; // Signal Remix SSR to bypass live fetches luxuriously.
 
 // Set a runtime global flag that SURVIVES Vite's build-time process.env replacement.
