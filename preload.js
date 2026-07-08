@@ -3,6 +3,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 // We expose a safe, read-only API to the isolated React DOM window.
 // This allows isDesktopApp() to immediately know it's inside Electron,
 // without relying on the spoofed User-Agent headers.
+contextBridge.exposeInMainWorld('__HOTELA_DESKTOP__', true);
 contextBridge.exposeInMainWorld('hotelaDesktopAPI', {
     isElectron: true,
     downloadImage: (payload) => ipcRenderer.invoke('image:download', payload),
