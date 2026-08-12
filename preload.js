@@ -8,5 +8,8 @@ contextBridge.exposeInMainWorld('hotelaDesktopAPI', {
     isElectron: true,
     downloadImage: (payload) => ipcRenderer.invoke('image:download', payload),
     cleanupImages: (payload) => ipcRenderer.invoke('image:cleanup', payload),
-    onImageFinished: (callback) => ipcRenderer.on('image:finished', (event, data) => callback(data))
+    onImageFinished: (callback) => ipcRenderer.on('image:finished', (event, data) => callback(data)),
+    sharePdfEmail: (payload) => ipcRenderer.invoke('share:pdfEmail', payload),
+    sharePdfWhatsApp: (payload) => ipcRenderer.invoke('share:pdfWhatsApp', payload),
+    exportConfirmationPdf: (payload) => ipcRenderer.invoke('confirmation:exportPdf', payload),
 });

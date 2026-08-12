@@ -1,5 +1,6 @@
-const { app, BrowserWindow, session, ipcMain, protocol } = require('electron');
+const { app, BrowserWindow, session, ipcMain, protocol, shell } = require('electron');
 const { autoUpdater } = require('electron-updater');
+const { execFile } = require('child_process');
 
 // Register custom protocol as privileged BEFORE any other modules load luxuriously.
 protocol.registerSchemesAsPrivileged([
@@ -18,6 +19,7 @@ protocol.registerSchemesAsPrivileged([
 const express = require('express');
 const path = require('path');
 const url = require('url');
+const fs = require('fs');
 const imageService = require('./image-service');
 
 // Ensure the Remix server knows where the backend API is.
@@ -41,6 +43,86 @@ const BUILD_PATH = path.join(__dirname, 'build', 'server', 'index.js');
 const BUILD_URL = url.pathToFileURL(BUILD_PATH).href;
 
 let expressServer = null;
+
+function sanitizePdfFilename(filename) {
+    return String(filename || 'document.pdf').replace(/[^a-zA-Z0-9._-]/g, '_');
+}
+
+function writePdfToDownloads(filename, pdfData) {
+    const safeName = sanitizePdfFilename(filename);
+    const dir = path.join(app.getPath('downloads'), 'Hotela');
+    fs.mkdirSync(dir, { recursive: true });
+    const filePath = path.join(dir, safeName);
+    fs.writeFileSync(filePath, Buffer.from(pdfData));
+    return filePath;
+}
+
+function wrapBase64Lines(base64) {
+    return base64.replace(/(.{76})/g, '$1\r\n');
+}
+
+function copyFileToClipboard(filePath) {
+    if (process.platform === 'win32') {
+        return new Promise((resolve, reject) => {
+            execFile(
+                'powershell.exe',
+                ['-NoProfile', '-Command', `Set-Clipboard -Path '${filePath.replace(/'/g, "''")}'`],
+                (err) => (err ? reject(err) : resolve()),
+            );
+        });
+    }
+
+    if (process.platform === 'darwin') {
+        return new Promise((resolve, reject) => {
+            execFile(
+                'osascript',
+                ['-e', `set the clipboard to (POSIX file "${filePath.replace(/"/g, '\\"')}")`],
+                (err) => (err ? reject(err) : resolve()),
+            );
+        });
+    }
+
+    return Promise.reject(new Error('Clipboard file copy is not supported on this platform'));
+}
+
+async function openWhatsApp(message) {
+    const encoded = encodeURIComponent(message || '');
+    const webUrl = `https://wa.me/?text=${encoded}`;
+
+    // Prefer wa.me in the system browser — whatsapp:// can destabilize Electron on Windows.
+    await shell.openExternal(webUrl);
+}
+
+function createEmlWithPdfAttachment({ subject, body, pdfPath, pdfFilename }) {
+    const boundary = `----=_Hotela_${Date.now()}`;
+    const pdfBase64 = fs.readFileSync(pdfPath).toString('base64');
+    const emlPath = pdfPath.replace(/\.pdf$/i, '.eml');
+
+    const eml = [
+        `Subject: ${subject}`,
+        'MIME-Version: 1.0',
+        `Content-Type: multipart/mixed; boundary="${boundary}"`,
+        '',
+        `--${boundary}`,
+        'Content-Type: text/plain; charset="UTF-8"',
+        'Content-Transfer-Encoding: 7bit',
+        '',
+        body,
+        '',
+        `--${boundary}`,
+        `Content-Type: application/pdf; name="${pdfFilename}"`,
+        'Content-Transfer-Encoding: base64',
+        `Content-Disposition: attachment; filename="${pdfFilename}"`,
+        '',
+        wrapBase64Lines(pdfBase64),
+        '',
+        `--${boundary}--`,
+        '',
+    ].join('\r\n');
+
+    fs.writeFileSync(emlPath, eml, 'utf8');
+    return emlPath;
+}
 
 async function startExpressServer() {
     return new Promise(async (resolve, reject) => {
@@ -106,6 +188,15 @@ async function createWindow() {
         backgroundColor: '#ffffff',
     });
 
+    win.webContents.setWindowOpenHandler(({ url }) => {
+        const appOrigin = `http://localhost:${PORT}`;
+        if (url.startsWith(appOrigin)) {
+            return { action: 'allow' };
+        }
+        shell.openExternal(url);
+        return { action: 'deny' };
+    });
+
     // After Remix hydrates, its client router fires a navigation back to the
     // same URL the page is already on.  Allowing that causes a full page
     // reload loop (the visual "blink").  We intercept and cancel it.
@@ -117,6 +208,12 @@ async function createWindow() {
         if (!initialLoadDone) return; // always allow the very first page load
         if (navUrl === win.webContents.getURL()) {
             event.preventDefault(); // block same-URL reload — this stops the blink
+            return;
+        }
+        const appOrigin = `http://localhost:${PORT}`;
+        if (!navUrl.startsWith(appOrigin)) {
+            event.preventDefault();
+            shell.openExternal(navUrl);
         }
     });
 
@@ -172,6 +269,76 @@ app.whenReady().then(async () => {
 
         ipcMain.handle('image:cleanup', async (event, payload) => {
             return await imageService.cleanup(payload.activeHashes);
+        });
+
+        ipcMain.handle('share:pdfEmail', async (_event, payload) => {
+            const { filename, pdfData, subject, body } = payload || {};
+            const pdfPath = writePdfToDownloads(filename, pdfData);
+            const emlPath = createEmlWithPdfAttachment({
+                subject: subject || 'Document',
+                body: body || '',
+                pdfPath,
+                pdfFilename: sanitizePdfFilename(filename),
+            });
+            await shell.openPath(emlPath);
+            return { ok: true, pdfPath, emlPath };
+        });
+
+        ipcMain.handle('share:pdfWhatsApp', async (_event, payload) => {
+            const { filename, pdfData, message } = payload || {};
+            const pdfPath = writePdfToDownloads(filename, pdfData);
+            let copiedToClipboard = false;
+
+            try {
+                await copyFileToClipboard(pdfPath);
+                copiedToClipboard = true;
+            } catch (err) {
+                console.warn('[hotela-desktop] Could not copy PDF to clipboard:', err.message);
+            }
+
+            await openWhatsApp(message || '');
+            return { ok: true, pdfPath, copiedToClipboard };
+        });
+
+        // Renders the confirmation through Chromium's print engine so desktop PDFs are
+        // vector text, identical to what the browser produces via Print > Save as PDF.
+        ipcMain.handle('confirmation:exportPdf', async (_event, payload) => {
+            const { html } = payload || {};
+            if (!html) {
+                throw new Error('Missing confirmation HTML');
+            }
+
+            const tmpPath = path.join(
+                app.getPath('temp'),
+                `hotela-confirmation-${Date.now()}-${Math.random().toString(16).slice(2)}.html`,
+            );
+            fs.writeFileSync(tmpPath, html, 'utf8');
+
+            const win = new BrowserWindow({
+                show: false,
+                width: 820,
+                height: 1200,
+                webPreferences: {
+                    contextIsolation: true,
+                    nodeIntegration: false,
+                },
+            });
+
+            try {
+                await win.loadFile(tmpPath);
+                // Give webfonts and the logo a moment to settle before rasterising layout.
+                await new Promise((resolve) => setTimeout(resolve, 400));
+
+                return await win.webContents.printToPDF({
+                    printBackground: true,
+                    preferCSSPageSize: true,
+                    pageSize: 'A4',
+                    margins: { marginType: 'custom', top: 0, bottom: 0, left: 0, right: 0 },
+                });
+            } finally {
+                win.destroy();
+                fs.promises.unlink(tmpPath).catch(() => {});
+            }
         });
 
     } catch (err) {
